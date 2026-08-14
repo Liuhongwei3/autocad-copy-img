@@ -53,6 +53,11 @@
                     工单批量打印
                   </a>
                 </a-menu-item>
+                <a-menu-item :disabled="cadExporting">
+                  <a @click="downloadSelectedCadImages">
+                    {{ cadExporting ? '正在生成 CAD 图片' : '下载 CAD 图片' }}
+                  </a>
+                </a-menu-item>
                 <!-- <a-menu-item>
                 <a @click="handleBatchEmergencyTypeEdit(selectedRowKeys)"
                   >设置工单紧急类型</a
@@ -745,6 +750,7 @@ export default {
       previewImageUrl: '',
       previewTitle: '',
       previewRecord: null,
+      cadExporting: false,
 
       currentOrder: {},
       editModalVisible: false,
@@ -1254,10 +1260,13 @@ export default {
     /**
      * 生成图片
      */
-    async generateImage(record) {
+    async generateImage(record, { preview = true } = {}) {
       try {
-        if (record.imageGenerated) {
-          return
+        if (record.imageGenerated && record.imageBlob) {
+          if (preview) {
+            this.previewImage(record)
+          }
+          return record
         }
 
         this.$set(record, 'generating', true)
@@ -1349,11 +1358,15 @@ export default {
           blob,
           fileName,
         })
-        this.previewImage(record)
+        if (preview) {
+          this.previewImage(record)
+        }
+        return record
         // this.$message.success('图片生成成功！')
       } catch (error) {
         console.error('生成图片失败:', error)
         this.$message.error('生成图片失败，请重试')
+        throw error
       } finally {
         // this.showTemplate = false
         this.$set(record, 'generating', false)
@@ -1377,9 +1390,185 @@ export default {
           return // 直接退出循环
         }
 
-        await this.generateImage(item)
+        await this.generateImage(item, { preview: false })
         await this.delay(300) // 避免过快连续操作
       }
+    },
+    /**
+     * 下载所选工单的 CAD 图片包。
+     * 浏览器无法将多个文件直接写入指定目录，因此输出为 ZIP 文件。
+     */
+    async downloadSelectedCadImages() {
+      if (this.cadExporting) {
+        return
+      }
+
+      const selectedIds = new Set(this.selectedRowKeys)
+      const records = this.taskList.filter((item) => selectedIds.has(item.id))
+
+      if (records.length === 0) {
+        this.$message.warning('请先选择需要导出的工单')
+        return
+      }
+
+      const unsupportedRecords = records.filter((record) =>
+        this.judgeHasOpr(record.category)
+      )
+      const exportRecords = records.filter(
+        (record) => !this.judgeHasOpr(record.category)
+      )
+
+      if (exportRecords.length === 0) {
+        this.$message.warning('所选工单不支持生成 CAD 图片')
+        return
+      }
+
+      const fileNames = exportRecords.map((record) =>
+        this.getCadImageFileName(record.code)
+      )
+      if (new Set(fileNames).size !== fileNames.length) {
+        this.$message.error('所选工单的图片文件名重复，无法导出')
+        return
+      }
+
+      this.cadExporting = true
+      try {
+        const files = []
+        for (const record of exportRecords) {
+          await this.generateImage(record, { preview: false })
+          files.push({
+            name: this.getCadImageFileName(record.code),
+            blob: record.imageBlob,
+          })
+        }
+
+        const zipBlob = await this.createStoredZip(files)
+        this.downloadBlob(
+          zipBlob,
+          `CAD工单图片_${dayjs().format('YYYYMMDD_HHmmss')}.zip`
+        )
+        const skippedMessage =
+          unsupportedRecords.length > 0
+            ? `，已跳过 ${unsupportedRecords.length} 条不支持的工单`
+            : ''
+        this.$message.success(
+          `已导出 ${files.length} 张 CAD 图片${skippedMessage}`
+        )
+      } catch (error) {
+        console.error('导出 CAD 图片失败:', error)
+        this.$message.error('导出 CAD 图片失败，请重试')
+      } finally {
+        this.cadExporting = false
+      }
+    },
+    /**
+     * 生成与 AutoCAD 插件一致的文件名。
+     * Windows 文件名不能包含 \ / : * ? " < > |，使用下划线替换。
+     */
+    getCadImageFileName(code) {
+      const safeCode = String(code || '')
+        .trim()
+        .replace(/[\\/:*?"<>|]/g, '_')
+      return `${safeCode || '未命名工单'}.png`
+    },
+    /**
+     * 创建仅存储 PNG 文件的 ZIP。PNG 已压缩，无需再引入额外压缩依赖。
+     */
+    async createStoredZip(files) {
+      const encoder = new TextEncoder()
+      const localFileParts = []
+      const centralDirectoryParts = []
+      let offset = 0
+
+      for (const file of files) {
+        const nameBytes = encoder.encode(file.name)
+        const data = new Uint8Array(await file.blob.arrayBuffer())
+        const crc = this.crc32(data)
+        const { dosDate, dosTime } = this.getDosDateTime(new Date())
+
+        const localHeader = new Uint8Array(30 + nameBytes.length)
+        const localView = new DataView(localHeader.buffer)
+        localView.setUint32(0, 0x04034b50, true)
+        localView.setUint16(4, 20, true)
+        localView.setUint16(6, 0x0800, true)
+        localView.setUint16(8, 0, true)
+        localView.setUint16(10, dosTime, true)
+        localView.setUint16(12, dosDate, true)
+        localView.setUint32(14, crc, true)
+        localView.setUint32(18, data.length, true)
+        localView.setUint32(22, data.length, true)
+        localView.setUint16(26, nameBytes.length, true)
+        localView.setUint16(28, 0, true)
+        localHeader.set(nameBytes, 30)
+
+        const centralHeader = new Uint8Array(46 + nameBytes.length)
+        const centralView = new DataView(centralHeader.buffer)
+        centralView.setUint32(0, 0x02014b50, true)
+        centralView.setUint16(4, 20, true)
+        centralView.setUint16(6, 20, true)
+        centralView.setUint16(8, 0x0800, true)
+        centralView.setUint16(10, 0, true)
+        centralView.setUint16(12, dosTime, true)
+        centralView.setUint16(14, dosDate, true)
+        centralView.setUint32(16, crc, true)
+        centralView.setUint32(20, data.length, true)
+        centralView.setUint32(24, data.length, true)
+        centralView.setUint16(28, nameBytes.length, true)
+        centralView.setUint16(30, 0, true)
+        centralView.setUint16(32, 0, true)
+        centralView.setUint16(34, 0, true)
+        centralView.setUint16(36, 0, true)
+        centralView.setUint32(38, 0, true)
+        centralView.setUint32(42, offset, true)
+        centralHeader.set(nameBytes, 46)
+
+        localFileParts.push(localHeader, data)
+        centralDirectoryParts.push(centralHeader)
+        offset += localHeader.length + data.length
+      }
+
+      const centralDirectorySize = centralDirectoryParts.reduce(
+        (size, part) => size + part.length,
+        0
+      )
+      const endOfCentralDirectory = new Uint8Array(22)
+      const endView = new DataView(endOfCentralDirectory.buffer)
+      endView.setUint32(0, 0x06054b50, true)
+      endView.setUint16(4, 0, true)
+      endView.setUint16(6, 0, true)
+      endView.setUint16(8, files.length, true)
+      endView.setUint16(10, files.length, true)
+      endView.setUint32(12, centralDirectorySize, true)
+      endView.setUint32(16, offset, true)
+      endView.setUint16(20, 0, true)
+
+      return new Blob(
+        [...localFileParts, ...centralDirectoryParts, endOfCentralDirectory],
+        { type: 'application/zip' }
+      )
+    },
+    getDosDateTime(date) {
+      const year = Math.max(date.getFullYear(), 1980)
+      return {
+        dosDate:
+          ((year - 1980) << 9) |
+          ((date.getMonth() + 1) << 5) |
+          date.getDate(),
+        dosTime:
+          (date.getHours() << 11) |
+          (date.getMinutes() << 5) |
+          Math.floor(date.getSeconds() / 2),
+      }
+    },
+    crc32(data) {
+      let crc = 0xffffffff
+      for (let index = 0; index < data.length; index += 1) {
+        crc ^= data[index]
+        for (let bit = 0; bit < 8; bit += 1) {
+          crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+        }
+      }
+      return (crc ^ 0xffffffff) >>> 0
     },
     beforeCopyImage(record) {
       if (record.qrUseCount > 0 || record.hasCopied) {
