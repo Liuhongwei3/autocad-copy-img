@@ -1258,10 +1258,13 @@ export default {
     },
 
     /**
-     * 生成图片
+     * 将隐藏的工单 DOM 模板渲染为 PNG。
+     * preview=false 用于批量导出：模板、二维码容器和 currentFields 都是共享状态，
+     * 因此外层必须顺序 await，不能并行生成多张图片。
      */
     async generateImage(record, { preview = true } = {}) {
       try {
+        // 同一页或翻页后可复用已经生成的 Blob，避免重复 html2canvas 渲染。
         if (record.imageGenerated && record.imageBlob) {
           if (preview) {
             this.previewImage(record)
@@ -1316,7 +1319,8 @@ export default {
         // canvas90Ctx.imageSmoothingQuality = 'high'
         // canvas90Ctx.drawImage(originalCanvas, 0, 0, 90, 50)
 
-        // 使用html2canvas生成图片
+        // 使用 html2canvas 将 500×250 的隐藏模板转为 Canvas；
+        // dataURL 给页面预览，Blob 用于剪贴板与 ZIP 文件。
         const canvas = await html2canvas(this.$refs.imageTemplate, {
           backgroundColor: '#ffffff',
           scale: 1,
@@ -1353,6 +1357,7 @@ export default {
         // this.$set(record, 'miniImageBlob', miniBlob)
         this.$set(record, 'fileName', fileName)
 
+        // 缓存按 record.code 索引。列表翻页/重新查询时 getTasks 会从此缓存恢复图片。
         this.generateImgCacheMap.set(record.code, {
           dataURL,
           blob,
@@ -1397,12 +1402,14 @@ export default {
     /**
      * 下载所选工单的 CAD 图片包。
      * 浏览器无法将多个文件直接写入指定目录，因此输出为 ZIP 文件。
+     * 当前仅处理表格当前页被选中的记录；跨页导出需要后端提供批量工单查询接口。
      */
     async downloadSelectedCadImages() {
       if (this.cadExporting) {
         return
       }
 
+      // row-key 是 id，selectedRowKeys 只保存主键；从当前 taskList 恢复完整工单数据。
       const selectedIds = new Set(this.selectedRowKeys)
       const records = this.taskList.filter((item) => selectedIds.has(item.id))
 
@@ -1435,6 +1442,7 @@ export default {
       try {
         const files = []
         for (const record of exportRecords) {
+          // 必须串行生成：每次都会重用同一个 imageTemplate 和二维码 DOM 容器。
           await this.generateImage(record, { preview: false })
           files.push({
             name: this.getCadImageFileName(record.code),
@@ -1473,6 +1481,7 @@ export default {
     },
     /**
      * 创建仅存储 PNG 文件的 ZIP。PNG 已压缩，无需再引入额外压缩依赖。
+     * ZIP 条目使用 UTF-8 标志，以便中文工单号也能被 Windows 正确解压。
      */
     async createStoredZip(files) {
       const encoder = new TextEncoder()
@@ -1486,6 +1495,7 @@ export default {
         const crc = this.crc32(data)
         const { dosDate, dosTime } = this.getDosDateTime(new Date())
 
+        // 每个文件由“本地文件头 + 原始 PNG 字节”组成；压缩方式 0 代表直接存储。
         const localHeader = new Uint8Array(30 + nameBytes.length)
         const localView = new DataView(localHeader.buffer)
         localView.setUint32(0, 0x04034b50, true)
@@ -1501,6 +1511,7 @@ export default {
         localView.setUint16(28, 0, true)
         localHeader.set(nameBytes, 30)
 
+        // 中央目录记录每个文件在 ZIP 中的偏移，解压工具依赖它来定位文件。
         const centralHeader = new Uint8Array(46 + nameBytes.length)
         const centralView = new DataView(centralHeader.buffer)
         centralView.setUint32(0, 0x02014b50, true)
@@ -1531,6 +1542,7 @@ export default {
         (size, part) => size + part.length,
         0
       )
+      // ZIP 末尾目录记录声明文件总数、中央目录大小与起始偏移。
       const endOfCentralDirectory = new Uint8Array(22)
       const endView = new DataView(endOfCentralDirectory.buffer)
       endView.setUint32(0, 0x06054b50, true)
@@ -1547,6 +1559,7 @@ export default {
         { type: 'application/zip' }
       )
     },
+    // ZIP 格式使用 DOS 日期/时间，而不是 JavaScript 的 Unix 时间戳。
     getDosDateTime(date) {
       const year = Math.max(date.getFullYear(), 1980)
       return {
@@ -1560,6 +1573,7 @@ export default {
           Math.floor(date.getSeconds() / 2),
       }
     },
+    // 每个 ZIP 条目必须携带 CRC-32，用于解压时校验 PNG 字节是否损坏。
     crc32(data) {
       let crc = 0xffffffff
       for (let index = 0; index < data.length; index += 1) {
