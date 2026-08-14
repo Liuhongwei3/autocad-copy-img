@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      AutoCAD 2024 及更早版本使用 net48。
+      AutoCAD 2025 及更新版本通常使用 net8.0-windows；请按实际安装版本设置。
+    -->
+    <TargetFramework Condition="'$(AutoCADTargetFramework)' == ''">net48</TargetFramework>
+    <TargetFramework Condition="'$(AutoCADTargetFramework)' != ''">$(AutoCADTargetFramework)</TargetFramework>
+    <Platforms>AnyCPU</Platforms>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2024</AutoCADInstallDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="AcMgd">
+      <HintPath>$(AutoCADInstallDir)\AcMgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(AutoCADInstallDir)\AcDbMgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
