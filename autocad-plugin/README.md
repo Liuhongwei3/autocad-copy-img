@@ -1,6 +1,6 @@
 # CAD 工单图片插件
 
-该插件不需要新增服务器。前端将工单图片导出为 ZIP，AutoCAD 从本地读取 PNG 并按用户点位插入。本文档覆盖开发人员编译、测试、生成一键安装包以及客户使用的完整流程。
+该插件不需要新增服务器。前端将工单图片导出为 ZIP，AutoCAD 从本地读取 PNG 后可按用户点位插入，也可扫描图纸中的占位块自动定位。本文档覆盖开发人员编译、测试、生成一键安装包以及客户使用的完整流程。
 
 ## 一、开始前确认
 
@@ -113,7 +113,7 @@ autocad-plugin\bin\Release\net8.0-windows\OrderImageCad.dll
 1. 双击本次生成的 `OrderImageCadSetup-<版本>.exe`；
 2. 完成安装后重启 AutoCAD；
 3. 在 AutoCAD 命令行输入 `ORDERIMGCONFIG`，若命令可识别，说明插件已自动加载；
-4. 按“客户日常操作”完成一次真实工单的插入；
+4. 分别按“手动点位”和“占位块自动定位”完成一次真实工单的插入；
 5. 卸载安装包后重启 AutoCAD，确认命令不再存在。
 
 安装包将插件安装到当前 Windows 用户的标准 AutoCAD `ApplicationPlugins` 目录，因此客户不需要 `NETLOAD`、手动配置 `TRUSTEDPATHS` 或管理员权限。
@@ -132,7 +132,7 @@ autocad-plugin\bin\Release\net8.0-windows\OrderImageCad.dll
 
 配置会自动保存到当前 Windows 用户目录；通常仅需设置一次。
 
-### 每次插入
+### 方式一：手动点位插入
 
 1. 从前端下载并解压最新图片 ZIP 到已配置的目录；
 2. 打开图纸，输入 `ORDERIMG`；
@@ -140,6 +140,37 @@ autocad-plugin\bin\Release\net8.0-windows\OrderImageCad.dll
 4. 在图纸中点击图片左下角的位置。
 
 插件会按保存的宽高插入图片，并使用当前模型空间或当前布局空间。首次版本故意保留点位选择，因此无需假设所有图纸有相同版式。
+
+### 方式二：占位块自动定位
+
+此方式保留 `ORDERIMG` 手动点位命令，同时新增两个自动定位命令：
+
+| 命令 | 适用场景 | 行为 |
+| --- | --- | --- |
+| `ORDERIMGSLOT` | 当前模型空间或布局空间只有一个工单图片位置 | 输入 `record.code` 后，自动在唯一占位块位置插图。 |
+| `ORDERIMGSLOTS` | 当前空间有多个工单图片位置 | 读取每个占位块的 `ORDER_CODE` 属性，自动匹配并批量插图。 |
+
+#### 制作占位块模板
+
+在 AutoCAD 模板中创建一个名称为 `ORDER_IMG_SLOT` 的普通块：
+
+1. 将块基点放在最终图片的**左下角**；
+2. 建议在不打印的图层（例如 `ORDER_SLOT`）画一个与图片同宽高的矩形，便于模板设计人员确认位置；
+3. 将块作为独立块参照直接插入模型空间或布局空间；不要把它嵌套在图框等其他块定义内；
+4. 模板中每个需要放置工单图片的位置放置一个 `ORDER_IMG_SLOT`。
+
+`ORDERIMGSLOT` 适用于一个图纸当前空间只有一个占位块的情况。执行后输入工单号即可，插件会读取占位块基点、旋转角度，并按已配置的宽高插入 PNG。
+
+若一个空间有多个占位块，需要在 `ORDER_IMG_SLOT` 块定义中增加一个属性：
+
+```text
+属性标签（Tag）：ORDER_CODE
+属性值：对应的 record.code，例如 WO-001
+```
+
+随后执行 `ORDERIMGSLOTS`。插件会扫描全部占位块，为每个 `ORDER_CODE` 找到同名 PNG 并插入，不需要输入工单号或点击位置。
+
+插入成功的占位块会自动删除；缺少 `ORDER_CODE`、找不到对应 PNG 或插入失败的占位块会保留，方便修正后重试。图片使用 `ORDERIMGCONFIG` 保存的宽、高，而不是占位块矩形的缩放比例。
 
 ## 六、图纸交付注意事项
 
@@ -150,6 +181,8 @@ AutoCAD 将 PNG 作为外部栅格图像引用。移动或交付 DWG 时，必�
 | 问题 | 处理方式 |
 | --- | --- |
 | `ORDERIMG` 是未知命令 | 确认安装包与 AutoCAD 大版本一致，重启 AutoCAD 后重试。 |
+| `ORDERIMGSLOT` 找不到占位块 | 确认当前空间直接插入了名为 `ORDER_IMG_SLOT` 的块；嵌套在其他块中的占位块不会被扫描。 |
+| `ORDERIMGSLOT` 提示有多个占位块 | 保留一个占位块后重试，或为每个占位块填写 `ORDER_CODE` 属性并使用 `ORDERIMGSLOTS`。 |
 | 找不到 `xxx.png` | 确认前端 ZIP 已解压到 `ORDERIMGCONFIG` 保存的目录，且输入的是 `record.code`。 |
 | 图片尺寸不对 | 重新运行 `ORDERIMGCONFIG`，按当前图纸单位重新设置宽、高。 |
 | 移动 DWG 后图片丢失 | 将 PNG 目录随 DWG 一并交付，或使用 `ETRANSMIT`。 |
