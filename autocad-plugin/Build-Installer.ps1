@@ -142,6 +142,8 @@ $packageContentsPath = Join-Path $bundleRoot "PackageContents.xml"
       <Commands GroupName="OrderImageCad">
         <Command Global="ORDERIMGCONFIG" Local="ORDERIMGCONFIG" />
         <Command Global="ORDERIMG" Local="ORDERIMG" />
+        <Command Global="ORDERIMGSLOT" Local="ORDERIMGSLOT" />
+        <Command Global="ORDERIMGSLOTS" Local="ORDERIMGSLOTS" />
       </Commands>
     </ComponentEntry>
   </Components>
