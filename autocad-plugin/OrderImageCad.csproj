@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!--
-      AutoCAD 2024 及更早版本使用 net48。
-      AutoCAD 2025 及更新版本通常使用 net8.0-windows；请按实际安装版本设置。
+      AutoCAD 2024 使用 net48。
+      AutoCAD 2025 与 2026 使用 net8.0-windows；更新版本必须先确认其 .NET 运行时。
     -->
     <TargetFramework Condition="'$(AutoCADTargetFramework)' == ''">net48</TargetFramework>
     <TargetFramework Condition="'$(AutoCADTargetFramework)' != ''">$(AutoCADTargetFramework)</TargetFramework>

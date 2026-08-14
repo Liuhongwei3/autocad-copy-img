@@ -1,0 +1,5 @@
+# AutoCAD 插件构建与安装包产物
+/autocad-plugin/bin/
+/autocad-plugin/obj/
+/artifacts/
+/dist/
