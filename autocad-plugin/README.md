@@ -59,6 +59,12 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\autocad-plugin\Build-Installer.ps1 `
   -AutoCADVersion 2025 `
   -AutoCADInstallDir "D:\Autodesk\AutoCAD 2025"
+
+
+Set-ExecutionPolicy -Scope Process Bypass
+.\autocad-plugin\Build-Installer.ps1 `
+  -AutoCADVersion 2027 `
+  -AutoCADInstallDir "C:\Program Files\Autodesk\AutoCAD 2027"
 ```
 
 脚本会依次完成以下工作：

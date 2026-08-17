@@ -1,25 +1,48 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!--
-      AutoCAD 2024 使用 net48。
-      AutoCAD 2025 与 2026 使用 net8.0-windows；更新版本必须先确认其 .NET 运行时。
+    <!-- 
+      AutoCAD 2024 -> net48
+      AutoCAD 2025/2026 -> net8.0-windows
+      AutoCAD 2027 -> net10.0-windows
     -->
-    <TargetFramework Condition="'$(AutoCADTargetFramework)' == ''">net48</TargetFramework>
+    <TargetFramework Condition="'$(AutoCADTargetFramework)' == ''">net10.0-windows</TargetFramework>
     <TargetFramework Condition="'$(AutoCADTargetFramework)' != ''">$(AutoCADTargetFramework)</TargetFramework>
     <Platforms>AnyCPU</Platforms>
     <OutputType>Library</OutputType>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
-    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2024</AutoCADInstallDir>
+    <AutoCADInstallDir Condition="'$(AutoCADInstallDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2027</AutoCADInstallDir>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- 核心 AutoCAD 程序集 -->
     <Reference Include="AcMgd">
       <HintPath>$(AutoCADInstallDir)\AcMgd.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="AcDbMgd">
       <HintPath>$(AutoCADInstallDir)\AcDbMgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    
+    <Reference Include="accoremgd">
+      <HintPath>$(AutoCADInstallDir)\accoremgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcWindows">
+      <HintPath>$(AutoCADInstallDir)\AcWindows.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    
+    <!-- 如果你的代码用到 UI 相关功能 -->
+    <Reference Include="AcUi">
+      <HintPath>$(AutoCADInstallDir)\AcUi.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    
+    <!-- 如果用到 AdWindows（WPF 相关） -->
+    <Reference Include="AdWindows">
+      <HintPath>$(AutoCADInstallDir)\AdWindows.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>

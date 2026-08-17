@@ -1,7 +1,7 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet("2024", "2025", "2026")]
+  [ValidateSet("2024", "2025", "2027")]
   [string]$AutoCADVersion,
 
   [string]$AutoCADInstallDir,
@@ -23,9 +23,9 @@ $versionTargets = @{
     Framework = "net8.0-windows"
     Series = "R25.0"
   }
-  "2026" = @{
-    Framework = "net8.0-windows"
-    Series = "R25.1"
+  "2027" = @{
+    Framework = "net10.0-windows"
+    Series = "R26.0"
   }
 }
 

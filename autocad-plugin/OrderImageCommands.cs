@@ -8,6 +8,8 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 
+using SystemException = System.Exception;
+
 namespace OrderImageCad
 {
   /// <summary>
@@ -97,7 +99,7 @@ namespace OrderImageCad
         return;
       }
 
-      string orderCode = PromptOrderCode(editor);
+      string orderCode = GetOrderCode(editor, document);
       if (string.IsNullOrWhiteSpace(orderCode))
       {
         return;
@@ -136,7 +138,7 @@ namespace OrderImageCad
           string.Format("\n已插入工单图片：{0}", imageFileName)
         );
       }
-      catch (Exception exception)
+      catch (SystemException exception)
       {
         editor.WriteMessage(
           string.Format("\n插入工单图片失败：{0}", exception.Message)
@@ -164,7 +166,7 @@ namespace OrderImageCad
         return;
       }
 
-      string orderCode = PromptOrderCode(editor);
+      string orderCode = GetOrderCode(editor, document);
       if (string.IsNullOrWhiteSpace(orderCode))
       {
         return;
@@ -220,7 +222,7 @@ namespace OrderImageCad
           )
         );
       }
-      catch (Exception exception)
+      catch (SystemException exception)
       {
         editor.WriteMessage(
           string.Format("\n占位块插入工单图片失败：{0}", exception.Message)
@@ -291,7 +293,7 @@ namespace OrderImageCad
           );
           insertedCount += 1;
         }
-        catch (Exception exception)
+        catch (SystemException exception)
         {
           failedCount += 1;
           editor.WriteMessage(
@@ -335,16 +337,41 @@ namespace OrderImageCad
       return false;
     }
 
-    private static string PromptOrderCode(Editor editor)
+    private static string GetOrderCode(Editor editor, Document document)
     {
-      PromptStringOptions orderCodeOptions = new PromptStringOptions(
-        "\n请输入工单编号（record.code）: "
-      );
-      orderCodeOptions.AllowSpaces = true;
-      PromptResult orderCodeResult = editor.GetString(orderCodeOptions);
-      return orderCodeResult.Status == PromptStatus.OK
-        ? orderCodeResult.StringResult
-        : string.Empty;
+        // 先让用户输入（保留手动输入的灵活性）
+        PromptStringOptions options = new PromptStringOptions(
+            "\n请输入工单编号（直接回车则使用当前图纸名）: "
+        );
+        options.AllowSpaces = true;
+        PromptResult result = editor.GetString(options);
+        
+        if (result.Status == PromptStatus.OK && !string.IsNullOrWhiteSpace(result.StringResult))
+        {
+            // 用户手动输入了，优先使用
+            return result.StringResult.Trim();
+        }
+        
+        // 用户直接回车，使用当前图纸名
+        string drawingName = document.Name; // 例如 "C:\Drawings\WO-001.dwg"
+        if (string.IsNullOrEmpty(drawingName))
+        {
+            editor.WriteMessage("\n当前图纸未保存，请先保存图纸或手动输入工单号。");
+            return string.Empty;
+        }
+        
+        // 提取文件名（不含扩展名）
+        string fileName = System.IO.Path.GetFileNameWithoutExtension(drawingName);
+        
+        // 如果图纸名是 "Drawing1" 这种默认名称，提示用户
+        if (fileName.StartsWith("Drawing", StringComparison.OrdinalIgnoreCase))
+        {
+            editor.WriteMessage("\n当前图纸未命名，请先保存图纸或手动输入工单号。");
+            return string.Empty;
+        }
+        
+        editor.WriteMessage($"\n使用当前图纸名作为工单号：{fileName}");
+        return fileName;
     }
 
     private static double PromptPositiveDouble(
